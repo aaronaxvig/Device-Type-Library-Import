@@ -2,6 +2,47 @@
 
 <!-- version list -->
 
+## v1.2.0 (2026-03-10)
+
+### Bug Fixes
+
+- Handle remote url mismatch and improve branch error message in pull_repo (#35, [`f5675bf`](https://github.com/marcinpsk/Device-Type-Library-Import/commit/f5675bf071cdffaa6ab2234553e1cc8e0eba9c59))
+- Address pr review comments - graphql 3-tier fallback, legacy mapping update, empty stanza, inline validation, multi-mapping test coverage, extract helper to reduce complexity (#35, [`f5675bf`](https://github.com/marcinpsk/Device-Type-Library-Import/commit/f5675bf071cdffaa6ab2234553e1cc8e0eba9c59))
+- Guard legacy 2-tuple _mappings unpack, validate rear-ports:[], simplenamespace in tests, assert call ordering (#35, [`f5675bf`](https://github.com/marcinpsk/Device-Type-Library-Import/commit/f5675bf071cdffaa6ab2234553e1cc8e0eba9c59))
+- Prune fetch, early-return port-mappings key, core.repo.glob patch, type= in no-change test (#35, [`f5675bf`](https://github.com/marcinpsk/Device-Type-Library-Import/commit/f5675bf071cdffaa6ab2234553e1cc8e0eba9c59))
+- Clear legacy rear_port on empty mappings; add devicetypes test factory (#35, [`f5675bf`](https://github.com/marcinpsk/Device-Type-Library-Import/commit/f5675bf071cdffaa6ab2234553e1cc8e0eba9c59))
+- Remove dead code in _build_mappings_patch (not m2m inside if m2m block) (#35, [`f5675bf`](https://github.com/marcinpsk/Device-Type-Library-Import/commit/f5675bf071cdffaa6ab2234553e1cc8e0eba9c59))
+- Thread yaml_data into legacy mapping path; add markdownlintignore for changelog (#35, [`f5675bf`](https://github.com/marcinpsk/Device-Type-Library-Import/commit/f5675bf071cdffaa6ab2234553e1cc8e0eba9c59))
+
+
+### Build System
+
+- **deps**: Bump docker/metadata-action from 5 to 6 (#30, [`8447b2b`](https://github.com/marcinpsk/Device-Type-Library-Import/commit/8447b2b1bb533f4e72fb9090df9a6ad97465b9c3))
+- **deps**: Bump actions/upload-artifact from 4 to 7 (#31, [`947c5c9`](https://github.com/marcinpsk/Device-Type-Library-Import/commit/947c5c925bbf97f63e3757acae537420d0a8464d))
+- **deps**: Bump docker/login-action from 3 to 4 (#28, [`3621faa`](https://github.com/marcinpsk/Device-Type-Library-Import/commit/3621faa24b7201ada353e9895f0ab2559e78507b))
+- **deps**: Bump docker/build-push-action from 6 to 7 (#29, [`daa3cde`](https://github.com/marcinpsk/Device-Type-Library-Import/commit/daa3cde32550a634d13b56c7f81bdca285b9cb97))
+- **deps**: Bump python-dotenv from 1.2.1 to 1.2.2 (#33, [`0fef4b0`](https://github.com/marcinpsk/Device-Type-Library-Import/commit/0fef4b06b64f986b6e614ecb6e1920eb93155e16))
+- **deps-dev**: Bump ruff from 0.15.4 to 0.15.5 (#34, [`6632940`](https://github.com/marcinpsk/Device-Type-Library-Import/commit/66329407c843453542c51e76d7fce279cd318115))
+- **deps**: Bump docker/setup-qemu-action from 3 to 4 (#32, [`4ab06a8`](https://github.com/marcinpsk/Device-Type-Library-Import/commit/4ab06a8c0cb15774f81c854ae3ec56b76ce3c855))
+
+
+### Features
+
+- Add full port-mappings stanza support with multi-mapping and change detection (#35, [`f5675bf`](https://github.com/marcinpsk/Device-Type-Library-Import/commit/f5675bf071cdffaa6ab2234553e1cc8e0eba9c59))
+- Add full port-mappings stanza support with multi-mapping and change detection (#35, [`f5675bf`](https://github.com/marcinpsk/Device-Type-Library-Import/commit/f5675bf071cdffaa6ab2234553e1cc8e0eba9c59))
+
+
+### Testing
+
+- Add regression tests, version-path parametrize, and coverage gaps (#35, [`f5675bf`](https://github.com/marcinpsk/Device-Type-Library-Import/commit/f5675bf071cdffaa6ab2234553e1cc8e0eba9c59))
+- Assert no fallback retry when has_mappings guard fires in graphql fallback test (#35, [`f5675bf`](https://github.com/marcinpsk/Device-Type-Library-Import/commit/f5675bf071cdffaa6ab2234553e1cc8e0eba9c59))
+
+
+
+### Contributors
+
+@dependabot[bot], @marcinpsk
+
 ## v1.1.0 (2026-03-01)
 
 ### Bug Fixes
