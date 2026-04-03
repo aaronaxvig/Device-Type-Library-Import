@@ -3,20 +3,46 @@ import concurrent.futures
 import itertools
 import queue
 import re
+import time
 import pynetbox
 import requests
 import os
+from sys import exit as system_exit
 import glob
 from pathlib import Path
 
 from core.change_detector import COMPONENT_ALIASES, ChangeType
-from core.graphql_client import NetBoxGraphQLClient
+from core.graphql_client import GraphQLError, NetBoxGraphQLClient
 
 
 def _build_auth_header(token):
     """Return the Authorization header value for the given API token."""
     scheme = "Bearer" if token.startswith("nbt_") else "Token"
     return f"{scheme} {token}"
+
+
+# Transient connection errors that warrant a retry
+_RETRYABLE_EXCEPTIONS = (requests.exceptions.ConnectionError, requests.exceptions.Timeout)
+
+_MAX_RETRIES = 3
+_RETRY_BACKOFF = (2, 5, 10)  # seconds to wait before each retry attempt
+
+
+def _retry_on_connection_error(func, *args, **kwargs):
+    """Call *func* with retries on transient connection errors.
+
+    Retries up to ``_MAX_RETRIES`` times with exponential-ish backoff
+    for ``ConnectionError`` and ``Timeout`` from requests/urllib3.
+    Non-retryable exceptions propagate immediately.
+    """
+    for attempt in range(_MAX_RETRIES + 1):
+        try:
+            return func(*args, **kwargs)
+        except _RETRYABLE_EXCEPTIONS:
+            if attempt >= _MAX_RETRIES:
+                raise
+            wait = _RETRY_BACKOFF[attempt] if attempt < len(_RETRY_BACKOFF) else _RETRY_BACKOFF[-1]
+            time.sleep(wait)
 
 
 # Supported image file extensions for module-type image uploads
@@ -127,17 +153,23 @@ class NetBox:
             log_handler=self.handle,
             page_size=settings.GRAPHQL_PAGE_SIZE,
         )
-        self.existing_manufacturers = self.get_manufacturers()
-        self.device_types = DeviceTypes(
-            self.netbox,
-            self.handle,
-            self.counter,
-            self.ignore_ssl,
-            self.new_filters,
-            graphql=self.graphql,
-            m2m_front_ports=self.m2m_front_ports,
-            max_threads=settings.PRELOAD_THREADS,
-        )
+        try:
+            self.existing_manufacturers = self.get_manufacturers()
+        except GraphQLError as e:
+            system_exit(f"GraphQL error: {e}")
+        try:
+            self.device_types = DeviceTypes(
+                self.netbox,
+                self.handle,
+                self.counter,
+                self.ignore_ssl,
+                self.new_filters,
+                graphql=self.graphql,
+                m2m_front_ports=self.m2m_front_ports,
+                max_threads=settings.PRELOAD_THREADS,
+            )
+        except GraphQLError as e:
+            system_exit(f"GraphQL error fetching device types: {e}")
 
     def connect_api(self):
         """Connect to the NetBox API using the stored URL and token credentials."""
@@ -166,7 +198,21 @@ class NetBox:
         """
         # nb.version should be the version in the form '3.2'
         # Strip non-numeric suffixes (e.g. "4.1-beta") before converting to int.
-        _raw = [int(re.sub(r"\D.*", "", x.strip()) or "0") for x in self.netbox.version.split(".")]
+        try:
+            nb_version = self.netbox.version
+        except requests.exceptions.ProxyError as e:
+            system_exit(
+                f"Proxy error while connecting to NetBox at {self.url}: {e}\n"
+                f"Hint: If NetBox is running locally, ensure that the NETBOX_URL host "
+                f"is included in your 'no_proxy' / 'NO_PROXY' environment variable "
+                f"(both with and without brackets for IPv6, e.g. '::1,[::1]')."
+            )
+        except requests.exceptions.ConnectionError as e:
+            system_exit(
+                f"Connection error while connecting to NetBox at {self.url}: {e}\n"
+                f"Hint: Verify that NetBox is running and reachable at {self.url}."
+            )
+        _raw = [int(re.sub(r"\D.*", "", x.strip()) or "0") for x in nb_version.split(".")]
         version_split = (_raw + [0, 0])[:2]  # pad to (major, minor) to guard against single-component strings
 
         # Later than 3.2
@@ -222,13 +268,15 @@ class NetBox:
         if to_create:
             self.handle.log(f"Creating {len(to_create)} new manufacturers...")
             try:
-                created_manufacturers = self.netbox.dcim.manufacturers.create(to_create)
+                created_manufacturers = _retry_on_connection_error(self.netbox.dcim.manufacturers.create, to_create)
                 for manufacturer in created_manufacturers:
                     self.handle.verbose_log(f"Manufacturer Created: {manufacturer.name} - {manufacturer.id}")
                     self.counter.update({"manufacturer": 1})
             except pynetbox.RequestError as request_error:
                 # Log error with detailed API error message
                 self.handle.log(f"Error creating manufacturers: {request_error.error}")
+            except _RETRYABLE_EXCEPTIONS as e:
+                self.handle.log(f"Connection error creating manufacturers after {_MAX_RETRIES} retries: {e}")
         else:
             self.handle.verbose_log("No new manufacturers to create.")
 
@@ -332,12 +380,16 @@ class NetBox:
                 }
                 if updates:
                     try:
-                        self.netbox.dcim.device_types.update([{"id": dt.id, **updates}])
+                        _retry_on_connection_error(self.netbox.dcim.device_types.update, [{"id": dt.id, **updates}])
                         dt.update(updates)  # keep local cache in sync
                         self.counter.update({"properties_updated": 1})
                         self.handle.verbose_log(f"Updated device type {dt.model} properties: {list(updates.keys())}")
                     except pynetbox.RequestError as e:
                         self.handle.log(f"Error updating device type {dt.model}: {e.error}")
+                    except _RETRYABLE_EXCEPTIONS as e:
+                        self.handle.log(
+                            f"Connection error updating device type {dt.model} after {_MAX_RETRIES} retries: {e}"
+                        )
 
             # Apply component changes
             if dt_change.component_changes:
@@ -377,7 +429,7 @@ class NetBox:
                 True when the caller should skip to the next iteration.
         """
         try:
-            dt = self.netbox.dcim.device_types.create(device_type)
+            dt = _retry_on_connection_error(self.netbox.dcim.device_types.create, device_type)
             self.counter.update({"added": 1})
             self.handle.verbose_log(f"Device Type Created: {dt.manufacturer.name} - " + f"{dt.model} - {dt.id}")
             return dt, False
@@ -386,6 +438,13 @@ class NetBox:
                 f"Error {e.error} creating device type:"
                 f" {device_type.get('manufacturer', {}).get('slug', '')} {device_type.get('model', '')}"
                 f" (Context: {src_file})"
+            )
+            return None, True
+        except _RETRYABLE_EXCEPTIONS as e:
+            self.handle.log(
+                f"Connection error creating device type"
+                f" {device_type.get('manufacturer', {}).get('slug', '')} {device_type.get('model', '')}"
+                f" after {_MAX_RETRIES} retries: {e} (Context: {src_file})"
             )
             return None, True
 
@@ -576,7 +635,7 @@ class NetBox:
                 }
                 if updates:
                     try:
-                        self.netbox.dcim.rack_types.update([{"id": existing.id, **updates}])
+                        _retry_on_connection_error(self.netbox.dcim.rack_types.update, [{"id": existing.id, **updates}])
                         self.counter.update({"rack_type_updated": 1})
                         self.handle.verbose_log(
                             f"Rack Type Updated: {manufacturer_slug} - {model} - {existing.id} "
@@ -584,16 +643,26 @@ class NetBox:
                         )
                     except pynetbox.RequestError as e:
                         self.handle.log(f"Error updating Rack Type {model}: {e.error} (Context: {src_file})")
+                    except _RETRYABLE_EXCEPTIONS as e:
+                        self.handle.log(
+                            f"Connection error updating Rack Type {model} after {_MAX_RETRIES} retries:"
+                            f" {e} (Context: {src_file})"
+                        )
                 else:
                     self.handle.verbose_log(f"Rack Type Unchanged: {manufacturer_slug} - {model} - {existing.id}")
             else:
                 try:
-                    rt = self.netbox.dcim.rack_types.create(rack_type)
+                    rt = _retry_on_connection_error(self.netbox.dcim.rack_types.create, rack_type)
                     self.counter.update({"rack_type_added": 1})
                     all_rack_types.setdefault(manufacturer_slug, {})[model] = rt
                     self.handle.verbose_log(f"Rack Type Created: {manufacturer_slug} - {model} - {rt.id}")
                 except pynetbox.RequestError as excep:
                     self.handle.log(f"Error creating Rack Type: {excep.error} (Context: {src_file})")
+                except _RETRYABLE_EXCEPTIONS as e:
+                    self.handle.log(
+                        f"Connection error creating Rack Type {model} after {_MAX_RETRIES} retries:"
+                        f" {e} (Context: {src_file})"
+                    )
 
     @staticmethod
     def _find_existing_module_type(module_type, all_module_types):
@@ -742,7 +811,7 @@ class NetBox:
             )
         else:
             try:
-                module_type_res = self.netbox.dcim.module_types.create(curr_mt)
+                module_type_res = _retry_on_connection_error(self.netbox.dcim.module_types.create, curr_mt)
                 self.counter["module_added"] += 1
                 is_new = True
                 manufacturer_slug = curr_mt["manufacturer"]["slug"]
@@ -753,6 +822,11 @@ class NetBox:
                 )
             except pynetbox.RequestError as excep:
                 self.handle.log(f"Error creating Module Type: {excep.error} (Context: {src_file})")
+                return False
+            except _RETRYABLE_EXCEPTIONS as e:
+                self.handle.log(
+                    f"Connection error creating Module Type after {_MAX_RETRIES} retries: {e} (Context: {src_file})"
+                )
                 return False
 
         # Upload images for both cached and newly created module types
@@ -1766,7 +1840,7 @@ class DeviceTypes:
 
         if to_create:
             try:
-                created = endpoint.create(to_create)
+                created = _retry_on_connection_error(endpoint.create, to_create)
                 if parent_type == "device":
                     count = self.handle.log_device_ports_created(created, component_name)
                     self.counter.update({"components_added": count})
@@ -1790,6 +1864,13 @@ class DeviceTypes:
                     self.handle.log(
                         f"Error '{excep.error}' creating {component_name}. Items: {failed_items}{context_str}"
                     )
+            except _RETRYABLE_EXCEPTIONS as excep:
+                context_str = f" (Context: {context})" if context else ""
+                failed_items = [x["name"] for x in to_create]
+                self.handle.log(
+                    f"Connection error creating {component_name} after {_MAX_RETRIES} retries: {excep}."
+                    f" Items: {failed_items}{context_str}"
+                )
 
     def _build_mappings_patch(self, comp_name, new_mappings_set, device_type_id, parent_type):
         """Build the ``rear_ports`` PATCH payload for a front port ``_mappings`` change.
@@ -1937,11 +2018,15 @@ class DeviceTypes:
         success_count = 0
         for update_data in updates:
             try:
-                endpoint.update([update_data])
+                _retry_on_connection_error(endpoint.update, [update_data])
                 success_count += 1
                 self.handle.verbose_log(f"Updated {comp_type} (ID: {update_data['id']})")
             except pynetbox.RequestError as e:
                 self.handle.log(f"Error updating {comp_type} (ID: {update_data['id']}): {e.error}")
+            except _RETRYABLE_EXCEPTIONS as e:
+                self.handle.log(
+                    f"Connection error updating {comp_type} (ID: {update_data['id']}) after {_MAX_RETRIES} retries: {e}"
+                )
 
         if success_count:
             self.counter.update({"components_updated": success_count})
@@ -2083,10 +2168,14 @@ class DeviceTypes:
             success_count = 0
             for comp_id in ids_to_delete:
                 try:
-                    endpoint.delete([comp_id])
+                    _retry_on_connection_error(endpoint.delete, [comp_id])
                     success_count += 1
                 except pynetbox.RequestError as e:
                     self.handle.log(f"Error removing {comp_type} (ID: {comp_id}): {e.error}")
+                except _RETRYABLE_EXCEPTIONS as e:
+                    self.handle.log(
+                        f"Connection error removing {comp_type} (ID: {comp_id}) after {_MAX_RETRIES} retries: {e}"
+                    )
 
             if success_count:
                 self.counter.update({"components_removed": success_count})
@@ -2143,10 +2232,14 @@ class DeviceTypes:
 
             if to_update:
                 try:
-                    self.netbox.dcim.interface_templates.update(to_update)
+                    _retry_on_connection_error(self.netbox.dcim.interface_templates.update, to_update)
                     self.handle.verbose_log(f"Bridged {len(to_update)} interfaces.")
                 except pynetbox.RequestError as e:
                     self.handle.log(f"Error bridging interfaces: {e} (Context: {context})")
+                except _RETRYABLE_EXCEPTIONS as e:
+                    self.handle.log(
+                        f"Connection error bridging interfaces after {_MAX_RETRIES} retries: {e} (Context: {context})"
+                    )
 
     def create_power_ports(self, power_ports, device_type, context=None):
         """Create power port templates for a device type."""
