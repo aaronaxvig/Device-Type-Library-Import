@@ -2,6 +2,29 @@
 
 <!-- version list -->
 
+## v1.3.1 (2026-04-03)
+
+### Bug Fixes
+
+- Show actionable error for proxy/connection failures (#47, [`887db9c`](https://github.com/marcinpsk/Device-Type-Library-Import/commit/887db9ca57c517e42333fe11c4929be659aa9c1f))
+- Show actionable error message for proxy/connection failures (#47, [`887db9c`](https://github.com/marcinpsk/Device-Type-Library-Import/commit/887db9ca57c517e42333fe11c4929be659aa9c1f))
+- Catch graphql 403 and show actionable error message (#47, [`887db9c`](https://github.com/marcinpsk/Device-Type-Library-Import/commit/887db9ca57c517e42333fe11c4929be659aa9c1f))
+- Retry transient connection errors during bulk api operations (#47, [`887db9c`](https://github.com/marcinpsk/Device-Type-Library-Import/commit/887db9ca57c517e42333fe11c4929be659aa9c1f))
+- Catch graphqlerror from devicetypes initialization (#47, [`887db9c`](https://github.com/marcinpsk/Device-Type-Library-Import/commit/887db9ca57c517e42333fe11c4929be659aa9c1f))
+
+
+### Chores
+
+- Use --native-tls for uv in pre-commit hooks (#47, [`887db9c`](https://github.com/marcinpsk/Device-Type-Library-Import/commit/887db9ca57c517e42333fe11c4929be659aa9c1f))
+- Standardize retry count in connection error log messages (#47, [`887db9c`](https://github.com/marcinpsk/Device-Type-Library-Import/commit/887db9ca57c517e42333fe11c4929be659aa9c1f))
+- **deps**: Bump the python-deps group with 2 updates (#45, [`79385ee`](https://github.com/marcinpsk/Device-Type-Library-Import/commit/79385ee98f69369e31e76b28facee6293cae8319))
+
+
+
+### Contributors
+
+@dependabot[bot], @marcinpsk
+
 ## v1.3.0 (2026-03-31)
 
 ### Chores
