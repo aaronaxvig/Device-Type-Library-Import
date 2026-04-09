@@ -2,6 +2,24 @@
 
 <!-- version list -->
 
+## v1.3.2 (2026-04-09)
+
+### Bug Fixes
+
+- Update module image discovery for flat upstream layout (#50, [`aaf1b3e`](https://github.com/marcinpsk/Device-Type-Library-Import/commit/aaf1b3ea6ef92ed1a86ae5f77d147256e8bb27e6))
+
+
+### Chores
+
+- **deps**: Bump ruff from 0.15.8 to 0.15.9 in the python-deps group (#49, [`d5874c0`](https://github.com/marcinpsk/Device-Type-Library-Import/commit/d5874c03db42143985d4b9c85271e89c0d015517))
+- **ci**: Bump docker/login-action in the github-actions group (#48, [`2327192`](https://github.com/marcinpsk/Device-Type-Library-Import/commit/2327192e31a4946853ec6aa128a48844c200536b))
+
+
+
+### Contributors
+
+@dependabot[bot], @marcinpsk
+
 ## v1.3.1 (2026-04-03)
 
 ### Bug Fixes
