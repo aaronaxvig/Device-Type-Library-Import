@@ -146,12 +146,16 @@ class NetBox:
         self.rack_types = False
         self.connect_api()
         self.verify_compatibility()
+        # NetBox 4.2 removed OffsetPaginationInput from GraphQL; detect and disable pagination.
+        _version_split = ([int(re.sub(r"\D.*", "", x.strip()) or "0") for x in self.netbox.version.split(".")] + [0, 0])[:2]
+        _no_pagination = _version_split[0] > 4 or (_version_split[0] == 4 and _version_split[1] >= 2)
         self.graphql = NetBoxGraphQLClient(
             self.url,
             self.token,
             self.ignore_ssl,
             log_handler=self.handle,
             page_size=settings.GRAPHQL_PAGE_SIZE,
+            no_pagination=_no_pagination,
         )
         try:
             self.existing_manufacturers = self.get_manufacturers()

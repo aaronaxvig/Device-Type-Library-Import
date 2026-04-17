@@ -139,7 +139,19 @@ class NetBoxGraphQLClient:
         or raise the server's ``MAX_PAGE_SIZE`` setting to match.
     """
 
-    def __init__(self, url, token, ignore_ssl=False, log_handler=None, page_size=5000):
+    @staticmethod
+    def _strip_pagination(graphql_query):
+        """Remove ``$pagination: OffsetPaginationInput`` variable and ``pagination: $pagination``
+        argument from a GraphQL query string for use with NetBox 4.2+ which dropped that type."""
+        import re
+        q = re.sub(r"\(\s*\$pagination:\s*OffsetPaginationInput\s*\)", "", graphql_query)
+        q = re.sub(r"\(\s*pagination:\s*\$pagination\s*\)", "", q)
+        # Also handle when pagination arg appears alongside other args
+        q = re.sub(r",?\s*pagination:\s*\$pagination", "", q)
+        q = re.sub(r"pagination:\s*\$pagination\s*,?", "", q)
+        return q
+
+    def __init__(self, url, token, ignore_ssl=False, log_handler=None, page_size=5000, no_pagination=False):
         """Store connection parameters for later use in :meth:`query`.
 
         Args:
@@ -160,6 +172,7 @@ class NetBoxGraphQLClient:
         self._log_handler = log_handler
         self._page_size_clamping_warned = False
         self._page_size_clamping_lock = threading.Lock()
+        self.no_pagination = no_pagination
 
         self._session = requests.Session()
         # v2 tokens start with "nbt_" prefix (format: nbt_<key>.<secret>);
@@ -251,6 +264,15 @@ class NetBoxGraphQLClient:
         """
         if page_size is None:
             page_size = self.DEFAULT_PAGE_SIZE
+
+        # NetBox 4.2+ removed OffsetPaginationInput — fetch all in one request.
+        if self.no_pagination:
+            stripped = self._strip_pagination(graphql_query)
+            data = self.query(stripped, variables=variables)
+            items = data.get(list_key, [])
+            if on_page is not None and items:
+                on_page(len(items))
+            return items
 
         all_items = []
         offset = 0
