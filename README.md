@@ -85,14 +85,14 @@ and device, creating anything that is missing from NetBox while skipping entries
 
 This script provides ways to selectively import devices via `--vendors` and `--slugs` arguments.
 
-To import only devices from one vendors, or multiple:
+To import only devices from one vendor, or multiple vendors:
 
 ```shell
 uv run nb-dt-import.py --vendors apc
 uv run nb-dt-import.py --vendors apc,juniper
 ```
 
-`--slugs` does partial matching on each device type's slug, and also multiple:
+`--slugs` does partial matching on each device type's slug and supports multiple values:
 
 ```shell
 uv run nb-dt-import.py --slugs x440-g2            # Imports 11 network switch device type variations
